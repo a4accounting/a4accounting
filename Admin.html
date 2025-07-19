@@ -1,0 +1,2156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Lecture and Student Management</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and ReactDOM CDNs -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel CDN for JSX transformation in the browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        /* Basic styling to ensure the app fills its container */
+        body {
+            margin: 0;
+            font-family: "Inter", sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            background-color: #f3f4f6; /* Match the body background of the app */
+        }
+        #root {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh; /* Ensure it takes full height */
+            width: 100%; /* Ensure it takes full width */
+        }
+        /* Custom scrollbar for better aesthetics */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+            }
+        /* Modal styles */
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Import React hooks and functions
+        const { useState, useEffect, createContext, useContext, useMemo, useRef } = React;
+
+        // Initial set of lectures is empty.
+        const INITIAL_LECTURES = [];
+
+        // Initial set of courses, explicitly defined to appear even without lectures.
+        const INITIAL_COURSES = [
+            'Accounting-I',
+            'Business Mathematics',
+            'Economics',
+            'Principles of Commerce',
+            'Accounting-II',
+            'Business Statistics',
+            'Banking',
+            'Accounting', // From ADC Part I
+            'Business Mathematics & Statistics', // From ADC Part I
+            'Introduction to Business', // From ADC Part I
+            'English', // From ADC Part I
+            'Advanced Accounting', // From ADC Part II
+            'Cost Accounting', // From ADC Part II
+            'Business Communication', // From ADC Part II
+            'Business & Industrial Law', // From ADC Part II
+            'Banking & Finance' // From ADC Part II
+        ];
+
+        const AuthContext = createContext(null);
+
+        const AuthProvider = ({ children }) => {
+            const [user, setUser] = useState(null); // Admin user for this panel
+
+            // State for student login credentials and basic course assignments
+            const [registeredStudents, setRegisteredStudents] = useState(() => {
+                try {
+                    const storedStudents = localStorage.getItem('registeredStudents');
+                    if (storedStudents) {
+                        return JSON.parse(storedStudents);
+                    }
+                    return {
+                        'REG1001': { fullName: 'Alice Smith', password: 'password123', assignedCourses: ['Accounting-I', 'Business Mathematics'] },
+                        'REG1002': { fullName: 'Bob Johnson', password: 'securepass', assignedCourses: ['Economics', 'Business Statistics'] }
+                    };
+                } catch (error) {
+                    console.error("Failed to parse registered students from localStorage:", error);
+                    return {};
+                }
+            });
+
+            // State for detailed student records (newly added)
+            const [studentRecords, setStudentRecords] = useState(() => {
+                try {
+                    const storedStudentRecords = localStorage.getItem('studentRecords');
+                    return storedStudentRecords ? JSON.parse(storedStudentRecords) : [];
+                } catch (error) {
+                    console.error("Failed to parse student records from localStorage:", error);
+                    return [];
+                }
+            });
+
+            const [lectures, setLectures] = useState(() => {
+                try {
+                    const storedLectures = localStorage.getItem('allLectures');
+                    return storedLectures ? JSON.parse(storedLectures) : INITIAL_LECTURES;
+                } catch (error) {
+                    console.error("Failed to parse lectures from localStorage:", error);
+                    return INITIAL_LECTURES;
+                }
+            });
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem('registeredStudents', JSON.stringify(registeredStudents));
+                } catch (error) {
+                    console.error("Failed to save registered students to localStorage:", error);
+                }
+            }, [registeredStudents]);
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem('studentRecords', JSON.stringify(studentRecords));
+                } catch (error) {
+                    console.error("Failed to save student records to localStorage:", error);
+                }
+            }, [studentRecords]);
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem('allLectures', JSON.stringify(lectures));
+                } catch (error) {
+                    console.error("Failed to save lectures to localStorage:", error);
+                }
+            }, [lectures]);
+
+            // Admin login (simple hardcoded for this example)
+            const login = (username, password) => {
+                if (username === 'admin' && password === 'adminpass') { // Hardcoded admin credentials
+                    setUser({ username: 'admin', fullName: 'Administrator' });
+                    return true;
+                }
+                return false;
+            };
+
+            const logout = () => {
+                setUser(null);
+            };
+
+            // Register student for login and create an initial student record
+            const registerStudent = (registrationNumber, fullName, password) => {
+                if (registeredStudents[registrationNumber]) {
+                    return { success: false, message: 'Student with this registration number already exists.' };
+                }
+                setRegisteredStudents(prevStudents => ({
+                    ...prevStudents,
+                    [registrationNumber]: { fullName: fullName, password: password, assignedCourses: [] }
+                }));
+
+                // Also create an initial student record
+                addStudentRecord({
+                    regNumber: registrationNumber,
+                    admissionDate: new Date().toISOString().slice(0, 10), // Default to current date
+                    fullName: fullName,
+                    email: '', // To be filled by admin
+                    whatsapp: '', // To be filled by admin
+                    className: '', // To be filled by admin
+                    assignedCourses: [], // To be filled by admin
+                    monthlyFee: 0, // To be filled by admin
+                    feeStatus: 'Unpaid' // Default status
+                });
+
+                return { success: true, message: 'Student registered successfully!' };
+            };
+
+            const deleteStudent = (registrationNumber) => {
+                // Delete from registeredStudents (login accounts)
+                setRegisteredStudents(prevStudents => {
+                    const newStudents = { ...prevStudents };
+                    delete newStudents[registrationNumber];
+                    return newStudents;
+                });
+                // Delete from studentRecords (detailed records)
+                setStudentRecords(prevRecords => prevRecords.filter(rec => rec.regNumber !== registrationNumber));
+                return { success: true, message: 'Student deleted successfully.' };
+            };
+
+            // CRUD operations for student records
+            const addStudentRecord = (newRecord) => {
+                // Ensure unique registration number for student records
+                if (studentRecords.some(rec => rec.regNumber === newRecord.regNumber)) {
+                    return { success: false, message: 'Student record with this registration number already exists.' };
+                }
+                setStudentRecords(prevRecords => [...prevRecords, newRecord]);
+                return { success: true, message: 'Student record added successfully!' };
+            };
+
+            const updateStudentRecord = (regNumber, updatedFields) => {
+                setStudentRecords(prevRecords =>
+                    prevRecords.map(rec =>
+                        rec.regNumber === regNumber ? { ...rec, ...updatedFields } : rec
+                    )
+                );
+                // Also update assignedCourses and fullName in registeredStudents if they are part of updatedFields
+                setRegisteredStudents(prevStudents => {
+                    const updatedStudents = { ...prevStudents };
+                    if (updatedStudents[regNumber]) {
+                        if (updatedFields.assignedCourses !== undefined) {
+                            updatedStudents[regNumber].assignedCourses = updatedFields.assignedCourses;
+                        }
+                        if (updatedFields.fullName !== undefined) {
+                            updatedStudents[regNumber].fullName = updatedFields.fullName;
+                        }
+                    }
+                    return updatedStudents;
+                });
+                return { success: true, message: 'Student record updated successfully!' };
+            };
+
+            const deleteStudentRecord = (regNumber) => {
+                setStudentRecords(prevRecords => prevRecords.filter(rec => rec.regNumber !== regNumber));
+                // Also remove from registeredStudents if it exists there
+                setRegisteredStudents(prevStudents => {
+                    const newStudents = { ...prevStudents };
+                    delete newStudents[regNumber];
+                    return newStudents;
+                });
+                return { success: true, message: 'Student record deleted successfully!' };
+            };
+
+            const copyStudentRecord = (sourceRegNumber) => {
+                const sourceRecord = studentRecords.find(rec => rec.regNumber === sourceRegNumber);
+                if (!sourceRecord) {
+                    return { success: false, message: `Student record with registration number "${sourceRegNumber}" not found.` };
+                }
+
+                let newRegNumber = `${sourceRegNumber}-Copy`;
+                let copyIndex = 1;
+                while (studentRecords.some(rec => rec.regNumber === newRegNumber)) {
+                    newRegNumber = `${sourceRegNumber}-Copy${copyIndex}`;
+                    copyIndex++;
+                }
+
+                const copiedRecord = {
+                    ...sourceRecord,
+                    regNumber: newRegNumber,
+                    fullName: `${sourceRecord.fullName} (Copy)`,
+                    admissionDate: new Date().toISOString().slice(0, 10), // New admission date
+                    feeStatus: 'Unpaid' // Reset fee status for copied record
+                };
+
+                setStudentRecords(prevRecords => [...prevRecords, copiedRecord]);
+
+                // Also create a basic registered student entry for the copied record
+                setRegisteredStudents(prevStudents => ({
+                    ...prevStudents,
+                    [newRegNumber]: {
+                        fullName: copiedRecord.fullName,
+                        password: 'default_copied_password', // Set a default password for copied accounts
+                        assignedCourses: copiedRecord.assignedCourses
+                    }
+                }));
+
+                return { success: true, message: `Student record for "${sourceRecord.fullName}" copied to "${copiedRecord.fullName}"!` };
+            };
+
+
+            const addLecture = (title, driveUrl, course, chapter, publishDate = null, publishTime = null, isVisible = false) => {
+                const newLectureId = 'lec' + (lectures.length + 1).toString().padStart(3, '0');
+                const newLecture = { id: newLectureId, title, driveUrl, course, chapter, publishDate, publishTime, isVisible };
+                setLectures(prevLectures => [...prevLectures, newLecture]);
+                return { success: true, message: 'Lecture added successfully!' };
+            };
+
+            const toggleLectureVisibility = (lectureId) => {
+                setLectures(prevLectures =>
+                    prevLectures.map(lecture =>
+                        lecture.id === lectureId ? { ...lecture, isVisible: !lecture.isVisible } : lecture
+                    )
+                );
+            };
+
+            // Function to publish all invisible lectures
+            const publishAllInvisibleLectures = () => {
+                let lecturesUpdatedCount = 0;
+                setLectures(prevLectures => {
+                    const now = new Date();
+                    const currentDate = now.toISOString().slice(0, 10); // YYYY-MM-DD
+                    const currentTime = now.toTimeString().slice(0, 5); // HH:MM
+
+                    const updated = prevLectures.map(lecture => {
+                        if (!lecture.isVisible) {
+                            lecturesUpdatedCount++;
+                            return {
+                                ...lecture,
+                                isVisible: true,
+                                publishDate: currentDate,
+                                publishTime: currentTime
+                            };
+                        }
+                        return lecture;
+                    });
+                    return updated;
+                });
+                return { success: true, count: lecturesUpdatedCount };
+            };
+
+            // Function to copy a course and its lectures
+            const copyCourse = (sourceCourseName) => {
+                const lecturesToCopy = lectures.filter(lecture => lecture.course === sourceCourseName);
+
+                let newCourseName = `${sourceCourseName} (Copy)`;
+                let copyIndex = 1;
+                // Ensure the new course name is unique
+                while (allCourses.includes(newCourseName)) {
+                    newCourseName = `${sourceCourseName} (Copy ${copyIndex})`;
+                    copyIndex++;
+                }
+
+                let copiedLectures = [];
+                if (lecturesToCopy.length > 0) {
+                    copiedLectures = lecturesToCopy.map(lecture => {
+                        const newLectureId = 'lec' + (lectures.length + copyIndex + Math.random()).toString().replace('.', '').substring(0, 10);
+                        return {
+                            ...lecture,
+                            id: newLectureId,
+                            course: newCourseName,
+                            publishDate: null,
+                            publishTime: null,
+                            isVisible: false
+                        };
+                    });
+                } else {
+                    // If no lectures to copy, create a placeholder lecture to ensure the new course appears
+                    const newLectureId = 'lec' + (lectures.length + copyIndex + Math.random()).toString().replace('.', '').substring(0, 10);
+                    copiedLectures.push({
+                        id: newLectureId,
+                        title: 'Placeholder Lecture (No content yet)',
+                        driveUrl: '#', // Placeholder URL
+                        course: newCourseName,
+                        chapter: 'Introduction',
+                        publishDate: null,
+                        publishTime: null,
+                        isVisible: false // Hidden by default
+                    });
+                }
+
+                setLectures(prevLectures => [...prevLectures, ...copiedLectures]);
+                return { success: true, message: `Course "${sourceCourseName}" copied to "${newCourseName}" as drafts!` };
+            };
+
+            // New function to delete a course (by deleting all its associated lectures)
+            const deleteCourse = (courseName) => {
+                setLectures(prevLectures => prevLectures.filter(lecture => lecture.course !== courseName));
+                return { success: true, message: `All lectures for course "${courseName}" deleted.` };
+            };
+
+
+            // Modified to add or remove specific courses from a student's assigned list, or set all
+            const updateStudentCourses = (registrationNumber, courseNameOrNames, action) => {
+                setRegisteredStudents(prevStudents => {
+                    const updatedStudents = { ...prevStudents };
+                    if (updatedStudents[registrationNumber]) {
+                        let currentCourses = updatedStudents[registrationNumber].assignedCourses || [];
+                        if (action === 'add' && !currentCourses.includes(courseNameOrNames)) {
+                            updatedStudents[registrationNumber].assignedCourses = [...currentCourses, courseNameOrNames];
+                        } else if (action === 'remove') {
+                            updatedStudents[registrationNumber].assignedCourses = currentCourses.filter(c => c !== courseNameOrNames);
+                        } else if (action === 'set_all') {
+                            // This action type expects courseNameOrNames to be an array of course names
+                            updatedStudents[registrationNumber].assignedCourses = courseNameOrNames;
+                        }
+                    }
+                    return updatedStudents;
+                });
+                // Also update the studentRecord if it exists
+                setStudentRecords(prevRecords =>
+                    prevRecords.map(rec =>
+                        rec.regNumber === registrationNumber ? { ...rec, assignedCourses: courseNameOrNames } : rec
+                    )
+                );
+            };
+
+            // Combine explicitly defined initial courses with courses derived from added lectures
+            const allCourses = useMemo(() => {
+                const coursesFromLectures = [...new Set(lectures.map(lecture => lecture.course))];
+                return [...new Set([...INITIAL_COURSES, ...coursesFromLectures])].sort();
+            }, [lectures]);
+
+            const authContextValue = {
+                user,
+                login,
+                logout,
+                registerStudent,
+                deleteStudent,
+                registeredStudents,
+                studentRecords, // Expose studentRecords
+                addStudentRecord, // Expose addStudentRecord
+                updateStudentRecord, // Expose updateStudentRecord
+                deleteStudentRecord, // Expose deleteStudentRecord
+                copyStudentRecord, // Expose copyStudentRecord
+                updateStudentCourses,
+                allLectures: lectures,
+                allCourses: allCourses,
+                addLecture,
+                toggleLectureVisibility,
+                publishAllInvisibleLectures,
+                copyCourse,
+                deleteCourse // Expose deleteCourse
+            };
+
+            return (
+                <AuthContext.Provider value={authContextValue}>
+                    {children}
+                </AuthContext.Provider>
+            );
+        };
+
+        const useAuth = () => {
+            return useContext(AuthContext);
+        };
+
+        const MessageBox = ({ message, type, onClose }) => {
+            if (!message) return null;
+
+            let bgColor = '';
+            let textColor = '';
+            switch (type) {
+                case 'error':
+                    bgColor = 'bg-red-100';
+                    textColor = 'text-red-700';
+                    break;
+                case 'success':
+                    bgColor = 'bg-green-100';
+                    textColor = 'text-green-700';
+                    break;
+                case 'info':
+                default:
+                    bgColor = 'bg-blue-100';
+                    textColor = 'text-blue-700';
+                    break;
+            }
+
+            return (
+                <div className={`mt-6 p-3 text-sm text-center rounded-md ${bgColor} ${textColor} relative`}>
+                    {message}
+                    <button
+                        onClick={onClose}
+                        className="absolute top-1 right-2 text-lg font-bold leading-none cursor-pointer"
+                        aria-label="Close message"
+                    >
+                        &times;
+                    </button>
+                </div>
+            );
+        };
+
+        // Custom Confirmation Modal component
+        const ConfirmationModal = ({ isOpen, title, message, onConfirm, onCancel }) => {
+            if (!isOpen) return null;
+
+            return (
+                <div className="modal">
+                    <div className="modal-content">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">{title}</h3>
+                        <p className="text-gray-700 mb-6">{message}</p>
+                        <div className="flex justify-end gap-4">
+                            <button
+                                onClick={onCancel}
+                                className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={onConfirm}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition"
+                            >
+                                Confirm
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+
+        // Admin Login Page
+        const AdminLoginPage = ({ onLoginSuccess }) => {
+            const { login } = useAuth();
+            const [username, setUsername] = useState('');
+            const [password, setPassword] = useState('');
+            const [message, setMessage] = useState('');
+            const [messageType, setMessageType] = useState('info');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                setMessage('');
+
+                if (!username || !password) {
+                    setMessage('Please enter both username and password.');
+                    setMessageType('error');
+                    return;
+                }
+
+                const success = login(username, password);
+                if (success) {
+                    setMessage('Login successful! Redirecting to admin dashboard...');
+                    setMessageType('success');
+                    onLoginSuccess(); // Callback to change parent state
+                } else {
+                    setMessage('Invalid username or password.');
+                    setMessageType('error');
+                }
+            };
+
+            return (
+                <div className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full border border-gray-200">
+                    <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Admin Login</h2>
+
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        <div>
+                            <label htmlFor="adminUsername" className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                            <input
+                                type="text"
+                                id="adminUsername"
+                                name="adminUsername"
+                                placeholder="Enter admin username"
+                                className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <label htmlFor="adminPassword" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                            <input
+                                type="password"
+                                id="adminPassword"
+                                name="adminPassword"
+                                placeholder="Enter admin password"
+                                className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <button
+                                type="submit"
+                                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out"
+                            >
+                                Log in as Admin
+                            </button>
+                        </div>
+                    </form>
+
+                    <MessageBox message={message} type={messageType} onClose={() => setMessage('')} />
+                </div>
+            );
+        };
+
+        // Admin Sidebar Component
+        const AdminSidebar = ({ activeSection, setActiveSection, logout, user }) => (
+            <div className="w-64 bg-gray-800 text-white flex flex-col p-4 shadow-xl">
+                <div className="flex items-center mb-8">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-400 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5s3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18s-3.332.477-4.5 1.253" />
+                    </svg>
+                    <h2 className="text-2xl font-bold">Admin</h2>
+                </div>
+
+                <nav className="flex-1">
+                    <ul>
+                        <li className="mb-2">
+                            <button
+                                onClick={() => setActiveSection('studentManagement')}
+                                className={`w-full text-left px-4 py-2 rounded-md transition duration-200 ${activeSection === 'studentManagement' ? 'bg-indigo-600 text-white' : 'hover:bg-gray-700 text-gray-300'}`}
+                            >
+                                Student Account Management
+                            </button>
+                        </li>
+                        <li className="mb-2">
+                            <button
+                                onClick={() => setActiveSection('studentRecordsManagement')}
+                                className={`w-full text-left px-4 py-2 rounded-md transition duration-200 ${activeSection === 'studentRecordsManagement' ? 'bg-indigo-600 text-white' : 'hover:bg-gray-700 text-gray-300'}`}
+                            >
+                                Student Records Management
+                            </button>
+                        </li>
+                        <li className="mb-2">
+                            <button
+                                onClick={() => setActiveSection('lectureManagement')}
+                                className={`w-full text-left px-4 py-2 rounded-md transition duration-200 ${activeSection === 'lectureManagement' ? 'bg-indigo-600 text-white' : 'hover:bg-gray-700 text-gray-300'}`}
+                            >
+                                Lecture Management
+                            </button>
+                        </li>
+                    </ul>
+                </nav>
+
+                <div className="mt-auto pt-4 border-t border-gray-700">
+                    {user && (
+                        <p className="text-sm text-gray-400 mb-2">Logged in as: {user.fullName}</p>
+                    )}
+                    <button
+                        onClick={logout}
+                        className="w-full text-left px-4 py-2 rounded-md bg-red-600 hover:bg-red-700 text-white transition duration-200"
+                    >
+                        Log Out
+                    </button>
+                </div>
+            </div>
+        );
+
+        // Student Account Management Section Component (renamed for clarity)
+        const StudentManagementSection = ({
+            registeredStudents, allCourses, selectedStudentRegNum, setSelectedStudentRegNum,
+            assignedCourseNames, setAssignedCourseNames, handleRegister, handleCourseCheckboxChange,
+            handleSaveAssignedCourses, newRegNumber, setNewRegNumber, newStudentFullName, setNewStudentFullName,
+            newPassword, setNewPassword, deleteStudent, setMessage, setMessageType, registerStudent,
+            setIsModalOpen, setModalContent // Receive modal props
+        }) => {
+
+            const handleDeleteStudent = (regNumToDelete, studentFullName) => {
+                setModalContent({
+                    title: 'Confirm Deletion',
+                    message: `Are you sure you want to delete ${studentFullName} (${regNumToDelete})? This action cannot be undone.`,
+                    onConfirm: () => {
+                        const result = deleteStudent(regNumToDelete);
+                        if (result.success) {
+                            setMessage(`Student ${studentFullName} (${regNumToDelete}) deleted successfully.`);
+                            setMessageType('success');
+                        } else {
+                            setMessage(`Failed to delete student: ${result.message}`);
+                            setMessageType('error');
+                        }
+                        setIsModalOpen(false); // Close modal after action
+                    }
+                });
+                setIsModalOpen(true); // Open modal
+            };
+
+            return (
+                <div>
+                    <h2 className="text-3xl font-bold text-gray-800 mb-8">Student Account Management</h2>
+
+                    {/* Section for Registering New Students */}
+                    <div className="mb-10 p-6 border border-gray-200 rounded-md bg-gray-50">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Register New Student Account</h3>
+                        <form onSubmit={handleRegister} className="space-y-4">
+                            <div>
+                                <label htmlFor="newRegNumber" className="block text-sm font-medium text-gray-700 mb-1">New Registration Number</label>
+                                <input
+                                    type="text"
+                                    id="newRegNumber"
+                                    name="newRegNumber"
+                                    placeholder="e.g., REG1003"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={newRegNumber}
+                                    onChange={(e) => setNewRegNumber(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="newStudentFullName" className="block text-sm font-medium text-gray-700 mb-1">Student's Full Name</label>
+                                <input
+                                    type="text"
+                                    id="newStudentFullName"
+                                    name="newStudentFullName"
+                                    placeholder="e.g., Jane Doe"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={newStudentFullName}
+                                    onChange={(e) => setNewStudentFullName(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                <input
+                                    type="password"
+                                    id="newPassword"
+                                    name="newPassword"
+                                    placeholder="Set password"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out"
+                            >
+                                Register Student
+                            </button>
+                        </form>
+                    </div>
+
+                    {/* Section for Assigning Courses */}
+                    <div className="p-6 border border-gray-200 rounded-md bg-gray-50">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Assign Courses to Students (Login Accounts)</h3>
+                        <div className="mb-4">
+                            <label htmlFor="selectStudent" className="block text-sm font-medium text-gray-700 mb-1">Select Student</label>
+                            <select
+                                id="selectStudent"
+                                className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                value={selectedStudentRegNum}
+                                onChange={(e) => setSelectedStudentRegNum(e.target.value)}
+                            >
+                                <option value="">-- Select a Student --</option>
+                                {Object.keys(registeredStudents).map(regNum => (
+                                    <option key={regNum} value={regNum}>{registeredStudents[regNum].fullName} ({regNum})</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {selectedStudentRegNum && (
+                            <div className="mb-4">
+                                <p className="block text-sm font-medium text-gray-700 mb-2">Available Courses:</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto border p-3 rounded-md bg-white">
+                                    {allCourses.length > 0 ? (
+                                        allCourses.map(course => (
+                                            <div key={course} className="flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    id={`course-${course.replace(/\s/g, '-').replace(/&/g, 'and').replace(/-/g, '_')}`}
+                                                    checked={assignedCourseNames.includes(course)}
+                                                    onChange={(e) => handleCourseCheckboxChange(course, e.target.checked)}
+                                                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                                                />
+                                                <label htmlFor={`course-${course.replace(/\s/g, '-').replace(/&/g, 'and').replace(/-/g, '_')}`} className="ml-2 text-sm text-gray-900">
+                                                    {course}
+                                                </label>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-gray-500 col-span-2">No courses available to assign. Add lectures first.</p>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={handleSaveAssignedCourses}
+                                    className="mt-6 w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out"
+                                >
+                                    Save Course Assignments
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="mt-8">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Current Registered Student Accounts:</h3>
+                        {Object.keys(registeredStudents).length > 0 ? (
+                            <ul className="divide-y divide-gray-200 border border-gray-200 rounded-md">
+                                {Object.entries(registeredStudents).map(([regNum, data]) => (
+                                    <li key={regNum} className="p-3 flex justify-between items-center bg-gray-50 hover:bg-gray-100">
+                                        <div>
+                                            <span className="font-medium text-gray-700">{regNum} ({data.fullName})</span>
+                                            <span className="text-gray-500 text-sm block">
+                                                Courses: {data.assignedCourses && data.assignedCourses.length > 0 ? data.assignedCourses.join(', ') : 'None'}
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteStudent(regNum, data.fullName)}
+                                            className="ml-4 px-3 py-1 bg-red-500 text-white rounded-md text-sm hover:bg-red-600 transition"
+                                        >
+                                            Delete
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="text-gray-500">No students registered yet.</p>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // Student Records Management Section (NEW COMPONENT)
+        const StudentRecordsManagementSection = ({
+            studentRecords, allCourses, addStudentRecord, updateStudentRecord, deleteStudentRecord, copyStudentRecord,
+            setMessage, setMessageType
+        }) => {
+            const [editingRecord, setEditingRecord] = useState(null); // Null for add, object for edit
+            const [formState, setFormState] = useState({
+                regNumber: '',
+                admissionDate: '',
+                fullName: '',
+                email: '',
+                whatsapp: '',
+                className: '',
+                assignedCourses: [],
+                monthlyFee: 0,
+                feeStatus: 'Unpaid'
+            });
+
+            // State for confirmation modal
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [modalContent, setModalContent] = useState({ title: '', message: '', onConfirm: () => {} });
+
+            // Class-to-subjects mapping for the form
+            const subjectsByClass = {
+                'XI-Commerce': ['Accounting-I', 'Business Mathematics', 'Economics', 'Principles of Commerce'],
+                'XII-Commerce': ['Accounting-II', 'Business Statistics', 'Banking'],
+                'I.Com Combine': ['Accounting-I', 'Business Mathematics', 'Economics', 'Principles of Commerce', 'Accounting-II', 'Business Statistics', 'Banking'],
+                'ADC Part - I': ['Accounting', 'Business Mathematics & Statistics', 'Economics', 'Introduction to Business', 'English'],
+                'ADC Part - II': ['Advanced Accounting', 'Cost Accounting', 'Business Communication', 'Business & Industrial Law', 'Banking & Finance'],
+                'ADC-Combine': ['Accounting', 'Business Mathematics & Statistics', 'Economics', 'Introduction to Business', 'English', 'Advanced Accounting', 'Cost Accounting', 'Business Communication', 'Business & Industrial Law', 'Banking & '],
+            };
+            // Ensure unique subjects for combined classes
+            subjectsByClass['I.Com Combine'] = [...new Set(subjectsByClass['I.Com Combine'])];
+            subjectsByClass['ADC-Combine'] = [...new Set(subjectsByClass['ADC-Combine'])];
+
+
+            useEffect(() => {
+                if (editingRecord) {
+                    setFormState({ ...editingRecord });
+                } else {
+                    // Reset form for adding new record
+                    setFormState({
+                        regNumber: '',
+                        admissionDate: new Date().toISOString().slice(0, 10), // Default to current date
+                        fullName: '',
+                        email: '',
+                        whatsapp: '',
+                        className: '',
+                        assignedCourses: [],
+                        monthlyFee: 0,
+                        feeStatus: 'Unpaid'
+                    });
+                }
+            }, [editingRecord]);
+
+            const handleChange = (e) => {
+                const { name, value, type, checked } = e.target;
+                if (name === 'assignedCourses') {
+                    // Handle multi-select for courses
+                    const options = Array.from(e.target.options);
+                    const selectedCourses = options.filter(option => option.selected).map(option => option.value);
+                    setFormState(prev => ({ ...prev, [name]: selectedCourses }));
+                } else if (name === 'monthlyFee') {
+                    setFormState(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+                }
+                else {
+                    setFormState(prev => ({ ...prev, [name]: value }));
+                }
+            };
+
+            const handleSubjectCheckboxChange = (subjectName, isChecked) => {
+                setFormState(prev => {
+                    const currentCourses = prev.assignedCourses || [];
+                    if (isChecked && !currentCourses.includes(subjectName)) {
+                        return { ...prev, assignedCourses: [...currentCourses, subjectName] };
+                    } else if (!isChecked && currentCourses.includes(subjectName)) {
+                        return { ...prev, assignedCourses: currentCourses.filter(c => c !== subjectName) };
+                    }
+                    return prev;
+                });
+            };
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                setMessage('');
+
+                // Basic validation
+                if (!formState.regNumber || !formState.fullName || !formState.admissionDate || !formState.email || !formState.whatsapp || !formState.className || formState.assignedCourses.length === 0) {
+                    setMessage('Please fill all required fields for the student record (including at least one course).', 'error');
+                    return;
+                }
+
+                if (editingRecord) {
+                    const result = updateStudentRecord(editingRecord.regNumber, formState);
+                    if (result.success) {
+                        setMessage(`Student record for ${formState.fullName} updated successfully!`);
+                        setMessageType('success');
+                        setEditingRecord(null); // Exit edit mode
+                    } else {
+                        setMessage(result.message);
+                        setMessageType('error');
+                    }
+                } else {
+                    const result = addStudentRecord(formState);
+                    if (result.success) {
+                        setMessage(`Student record for ${formState.fullName} added successfully!`);
+                        setMessageType('success');
+                        // Reset form for new entry
+                        setFormState({
+                            regNumber: '',
+                            admissionDate: new Date().toISOString().slice(0, 10),
+                            fullName: '',
+                            email: '',
+                            whatsapp: '',
+                            className: '',
+                            assignedCourses: [],
+                            monthlyFee: 0,
+                            feeStatus: 'Unpaid'
+                        });
+                    } else {
+                        setMessage(result.message);
+                        setMessageType('error');
+                    }
+                }
+            };
+
+            const handleDelete = (regNumber, fullName) => {
+                setModalContent({
+                    title: 'Confirm Deletion',
+                    message: `Are you sure you want to delete the record for ${fullName} (${regNumber})? This action cannot be undone.`,
+                    onConfirm: () => {
+                        const result = deleteStudentRecord(regNumber);
+                        if (result.success) {
+                            setMessage(`Student record for ${fullName} (${regNumber}) deleted successfully.`);
+                            setMessageType('success');
+                            if (editingRecord && editingRecord.regNumber === regNumber) {
+                                setEditingRecord(null); // Clear edit mode if deleted
+                            }
+                        } else {
+                            setMessage(`Failed to delete record: ${result.message}`);
+                            setMessageType('error');
+                        }
+                        setIsModalOpen(false);
+                    }
+                });
+                setIsModalOpen(true);
+            };
+
+            const handleCopy = (regNumber, fullName) => {
+                setModalContent({
+                    title: 'Confirm Copy',
+                    message: `Are you sure you want to copy the record for ${fullName} (${regNumber})? A new record will be created.`,
+                    onConfirm: () => {
+                        const result = copyStudentRecord(regNumber);
+                        if (result.success) {
+                            setMessage(result.message);
+                            setMessageType('success');
+                        } else {
+                            setMessage(`Failed to copy record: ${result.message}`);
+                            setMessageType('error');
+                        }
+                        setIsModalOpen(false);
+                    }
+                });
+                setIsModalOpen(true);
+            };
+
+            const handleSendFeeReminders = () => {
+                const unpaidStudents = studentRecords.filter(student => student.feeStatus === 'Unpaid' && student.whatsapp);
+
+                if (unpaidStudents.length === 0) {
+                    setMessage('No unpaid students with WhatsApp numbers found to send reminders.', 'info');
+                    return;
+                }
+
+                setModalContent({
+                    title: 'Send WhatsApp Fee Reminders',
+                    message: `You are about to open ${unpaidStudents.length} WhatsApp chats for fee reminders. Please click 'Send' in each chat window. Continue?`,
+                    onConfirm: () => {
+                        unpaidStudents.forEach(student => {
+                            const messageText = `Dear ${student.fullName}, this is a reminder that your monthly fee is due. Please pay your fee to avoid any inconvenience. Thank you. A4ACCOUNTING Digital Academy.`;
+                            const whatsappUrl = `https://wa.me/${student.whatsapp.replace(/\+/g, '')}?text=${encodeURIComponent(messageText)}`;
+                            window.open(whatsappUrl, '_blank');
+                        });
+                        setMessage(`Opening WhatsApp chats for ${unpaidStudents.length} students...`, 'info');
+                        setIsModalOpen(false);
+                    }
+                });
+                setIsModalOpen(true);
+            };
+
+
+            const availableSubjectsForClass = formState.className ? subjectsByClass[formState.className] || [] : [];
+
+            return (
+                <div>
+                    <h2 className="text-3xl font-bold text-gray-800 mb-8">Student Records Management</h2>
+
+                    {/* Add/Edit Student Record Form */}
+                    <div className="mb-10 p-6 border border-gray-200 rounded-md bg-gray-50">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">{editingRecord ? 'Edit Student Record' : 'Add New Student Record'}</h3>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label htmlFor="regNumber" className="block text-sm font-medium text-gray-700 mb-1">Registration Number</label>
+                                <input
+                                    type="text"
+                                    id="regNumber"
+                                    name="regNumber"
+                                    placeholder="e.g., REG1001"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={formState.regNumber}
+                                    onChange={handleChange}
+                                    required
+                                    disabled={!!editingRecord} /* Disable reg number editing when in edit mode */
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="admissionDate" className="block text-sm font-medium text-gray-700 mb-1">Admission Date</label>
+                                <input
+                                    type="date"
+                                    id="admissionDate"
+                                    name="admissionDate"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={formState.admissionDate}
+                                    onChange={handleChange}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">Student Full Name</label>
+                                <input
+                                    type="text"
+                                    id="fullName"
+                                    name="fullName"
+                                    placeholder="e.g., Jane Doe"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={formState.fullName}
+                                    onChange={handleChange}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                                <input
+                                    type="email"
+                                    id="email"
+                                    name="email"
+                                    placeholder="e.g., jane.doe@example.com"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={formState.email}
+                                    onChange={handleChange}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="whatsapp" className="block text-sm font-medium text-gray-700 mb-1">Whatsapp Number</label>
+                                <input
+                                    type="tel"
+                                    id="whatsapp"
+                                    name="whatsapp"
+                                    placeholder="e.g., +1234567890"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={formState.whatsapp}
+                                    onChange={handleChange}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="className" className="block text-sm font-medium text-gray-700 mb-1">Class</label>
+                                <select
+                                    id="className"
+                                    name="className"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={formState.className}
+                                    onChange={handleChange}
+                                    required
+                                >
+                                    <option value="">Select Class</option>
+                                    <option value="XI-Commerce">XI-Commerce</option>
+                                    <option value="XII-Commerce">XII-Commerce</option>
+                                    <option value="I.Com Combine">I.Com Combine</option>
+                                    <option value="ADC Part - I">ADC Part - I</option>
+                                    <option value="ADC Part - II">ADC Part - II</option>
+                                    <option value="ADC-Combine">ADC-Combine</option>
+                                </select>
+                            </div>
+                            {formState.className && availableSubjectsForClass.length > 0 && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Courses</label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-40 overflow-y-auto border p-3 rounded-md bg-white">
+                                        {availableSubjectsForClass.map(subject => (
+                                            <div key={subject} className="flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    id={`subject-${subject.replace(/\s/g, '-').replace(/&/g, 'and').replace(/-/g, '_')}-record`}
+                                                    checked={formState.assignedCourses.includes(subject)}
+                                                    onChange={(e) => handleSubjectCheckboxChange(subject, e.target.checked)}
+                                                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                                                />
+                                                <label htmlFor={`subject-${subject.replace(/\s/g, '-').replace(/&/g, 'and').replace(/-/g, '_')}-record`} className="ml-2 text-sm text-gray-900">
+                                                    {subject}
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            <div>
+                                <label htmlFor="monthlyFee" className="block text-sm font-medium text-gray-700 mb-1">Monthly Fee</label>
+                                <input
+                                    type="number"
+                                    id="monthlyFee"
+                                    name="monthlyFee"
+                                    placeholder="e.g., 5000"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={formState.monthlyFee}
+                                    onChange={handleChange}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="feeStatus" className="block text-sm font-medium text-gray-700 mb-1">Current Month Fee Status</label>
+                                <select
+                                    id="feeStatus"
+                                    name="feeStatus"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={formState.feeStatus}
+                                    onChange={handleChange}
+                                    required
+                                >
+                                    <option value="Unpaid">Unpaid</option>
+                                    <option value="Paid">Paid</option>
+                                    <option value="Partially Paid">Partially Paid</option>
+                                </select>
+                            </div>
+                            <div className="flex gap-4">
+                                <button
+                                    type="submit"
+                                    className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out"
+                                >
+                                    {editingRecord ? 'Update Record' : 'Add Record'}
+                                </button>
+                                {editingRecord && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditingRecord(null)}
+                                        className="flex-1 flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out"
+                                    >
+                                        Cancel Edit
+                                    </button>
+                                )}
+                            </div>
+                        </form>
+                    </div>
+
+                    {/* Action Buttons for Student Records */}
+                    <div className="mb-8 flex justify-start gap-4">
+                        <button
+                            onClick={handleSendFeeReminders}
+                            className="px-6 py-2 bg-green-600 text-white rounded-md shadow hover:bg-green-700 transition"
+                        >
+                            Send Fee Reminders (WhatsApp)
+                        </button>
+                    </div>
+
+
+                    {/* Student Records List */}
+                    <div className="mt-8">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">All Student Records:</h3>
+                        {studentRecords.length > 0 ? (
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200 shadow-sm rounded-lg overflow-hidden">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reg No.</th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class</th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Courses</th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fee</th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {studentRecords.map(record => (
+                                            <tr key={record.regNumber}>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{record.regNumber}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.fullName}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.className}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.assignedCourses.join(', ')}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.monthlyFee}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.feeStatus}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                    <button
+                                                        onClick={() => setEditingRecord(record)}
+                                                        className="text-indigo-600 hover:text-indigo-900 mr-3"
+                                                        title="Edit Record"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleCopy(record.regNumber, record.fullName)}
+                                                        className="text-blue-600 hover:text-blue-900 mr-3"
+                                                        title="Copy Record"
+                                                    >
+                                                        Copy
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(record.regNumber, record.fullName)}
+                                                        className="text-red-600 hover:text-red-900"
+                                                        title="Delete Record"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="text-gray-500">No student records added yet. Register a student or add a record above.</p>
+                        )}
+                    </div>
+                    <ConfirmationModal
+                        isOpen={isModalOpen}
+                        title={modalContent.title}
+                        message={modalContent.message}
+                        onConfirm={modalContent.onConfirm}
+                        onCancel={() => setIsModalOpen(false)}
+                    />
+                </div>
+            );
+        };
+
+
+        // Course Detail Management Component
+        const CourseDetailManagement = ({
+            selectedCourseName, groupedLectures, allCourses, addLecture, toggleLectureVisibility, setMessage, setMessageType,
+            handleBackToCourses, registeredStudents, updateStudentCourses
+        }) => {
+            const [expandedChapters, setExpandedChapters] = useState({});
+            const [selectedStudentForCourse, setSelectedStudentForCourse] = useState('');
+
+            // Lecture form states for this specific course
+            const [newLectureTitle, setNewLectureTitle] = useState('');
+            const [newLectureDriveUrl, setNewLectureDriveUrl] = useState('');
+            const [newLectureChapter, setNewLectureChapter] = useState('');
+            const [isScheduling, setIsScheduling] = useState(false);
+            const [scheduledDate, setScheduledDate] = useState('');
+            const [scheduledTime, setScheduledTime] = useState('');
+            const [bulkLectureInput, setBulkLectureInput] = useState('');
+
+
+            const toggleChapter = (chapterName) => {
+                setExpandedChapters(prev => ({
+                    ...prev,
+                    [chapterName]: !prev[chapterName]
+                }));
+            };
+
+            const handleAddLectureForCourse = (e, scheduleType) => {
+                e.preventDefault(); // Prevent default form submission
+                setMessage('');
+
+                if (!newLectureTitle || !newLectureDriveUrl || !newLectureChapter) {
+                    setMessage('Please fill all lecture fields (Title, URL, Chapter).');
+                    setMessageType('error');
+                    return;
+                }
+
+                let finalPublishDate = null;
+                let finalPublishTime = null;
+                let finalIsVisible = true; // Default for "Upload Now" and "Schedule"
+
+                if (scheduleType === 'schedule') {
+                    if (!scheduledDate || !scheduledTime) {
+                        setMessage('Please set a date and time for scheduling the lecture.');
+                        setMessageType('error');
+                        return;
+                    }
+                    finalPublishDate = scheduledDate;
+                    finalPublishTime = scheduledTime;
+                }
+
+                // Ensure the course is the selected one
+                const result = addLecture(newLectureTitle, newLectureDriveUrl, selectedCourseName, newLectureChapter,
+                           finalPublishDate,
+                           finalPublishTime,
+                           finalIsVisible
+                );
+
+                if (result.success) {
+                    setMessage('Lecture added successfully!');
+                    setMessageType('success');
+                    setNewLectureTitle('');
+                    setNewLectureDriveUrl('');
+                    setNewLectureChapter('');
+                    setIsScheduling(false);
+                    setScheduledDate('');
+                    setScheduledTime('');
+                } else {
+                    setMessage(result.message);
+                    setMessageType('error');
+                }
+            };
+
+            const handleSaveAsDraft = (e) => {
+                e.preventDefault();
+                setMessage('');
+
+                if (!newLectureTitle || !newLectureDriveUrl || !newLectureChapter) {
+                    setMessage('Please fill Title, URL, and Chapter to save as draft.');
+                    setMessageType('error');
+                    return;
+                }
+
+                const result = addLecture(newLectureTitle, newLectureDriveUrl, selectedCourseName, newLectureChapter,
+                           null, // No publish date
+                           null, // No publish time
+                           false // Not visible
+                );
+
+                if (result.success) {
+                    setMessage('Lecture saved as draft!');
+                    setMessageType('success');
+                    setNewLectureTitle('');
+                    setNewLectureDriveUrl('');
+                    setNewLectureChapter('');
+                    setIsScheduling(false); // Reset scheduling fields
+                    setScheduledDate('');
+                    setScheduledTime('');
+                } else {
+                    setMessage(result.message);
+                    setMessageType('error');
+                }
+            };
+
+
+            const handleBulkUploadForCourse = (e) => {
+                e.preventDefault();
+                setMessage('');
+                const lines = bulkLectureInput.split('\n').filter(line => line.trim() !== '');
+                let successCount = 0;
+                let errorMessages = [];
+
+                lines.forEach((line, index) => {
+                    const parts = line.split(',');
+                    if (parts.length >= 3) { // Title, URL, Chapter (Course is fixed)
+                        const [title, driveUrl, chapter] = parts.map(p => p.trim());
+                        // Bulk uploaded lectures are NOT visible by default
+                        const result = addLecture(title, driveUrl, selectedCourseName, chapter, null, null, false);
+                        if (result.success) {
+                            successCount++;
+                        } else {
+                            errorMessages.push(`Line ${index + 1}: ${result.message}`);
+                        }
+                    } else {
+                        errorMessages.push(`Line ${index + 1}: Invalid format. Expected 'Title,URL,Chapter'.`);
+                    }
+                });
+
+                if (successCount > 0) {
+                    setMessage(`Successfully uploaded ${successCount} lectures to ${selectedCourseName}. ${errorMessages.length > 0 ? `Errors: ${errorMessages.join('; ')}` : ''}`);
+                    setMessageType('success');
+                    setBulkLectureInput('');
+                } else if (errorMessages.length > 0) {
+                    setMessage(`Failed to upload lectures. Errors: ${errorMessages.join('; ')}`);
+                    setMessageType('error');
+                } else {
+                    setMessage('No valid lecture data provided for bulk upload.');
+                    setMessageType('info');
+                }
+            };
+
+
+            const handleAddStudentToCourse = () => {
+                if (selectedStudentForCourse && selectedCourseName) {
+                    updateStudentCourses(selectedStudentForCourse, selectedCourseName, 'add');
+                    setMessage(`${registeredStudents[selectedStudentForCourse]?.fullName} added to ${selectedCourseName}!`);
+                    setMessageType('success');
+                    setSelectedStudentForCourse(''); // Clear selection
+                } else {
+                    setMessage('Please select a student to add to this course.');
+                    setMessageType('error');
+                }
+            };
+
+            const lecturesInThisCourse = groupedLectures[selectedCourseName] || {};
+
+            // Function to determine which icon to show
+            const getLinkIcon = (url) => {
+                const iconClasses = "w-6 h-6 transition-transform duration-200 hover:scale-110"; // Slightly larger, with hover effect
+                if (url.includes('youtube.com') || url.includes('youtu.be')) {
+                    // YouTube icon (simple play button SVG)
+                    return (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={`${iconClasses} text-red-600`}>
+                            <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.38 2.872-1.62l11.358 6.315c1.247.695 1.247 2.563 0 3.258L7.372 20.966c-1.343.76-2.872-.16-2.872-1.62V5.653Z" clipRule="evenodd" />
+                        </svg>
+                    );
+                } else if (url.includes('drive.google.com')) {
+                    // Google Drive icon (simple folder/cloud SVG)
+                    return (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={`${iconClasses} text-blue-600`}>
+                            <path d="M11.25 4.5c.172-.12.37-.21.572-.271 1.052-.329 2.149-.329 3.201 0 .202.06.4.151.572.271M12 21.75c-1.052 0-2.149-.329-3.201-.271-.202-.06-.4-.151-.572-.271M21.75 12c0 1.052-.329 2.149-.271 3.201-.06.202-.151.4-.271.572M4.5 12c0-1.052.329-2.149.271-3.201.06-.202.151-.4.271-.572M12 2.25c1.052 0 2.149.329 3.201.271.202.06.4.151.572.271M2.25 12c0-1.052.329-2.149.271-3.201.06-.202.151-.4.271-.572M12 21.75c-1.052 0-2.149-.329-3.201-.271-.202-.06-.4-.151-.271-.572" />
+                            <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 9a.75.75 0 0 0-1.5 0v2.25H9a.75.75 0 0 0 0 1.5h2.25V15a.75.75 0 0 0 1.5 0v-2.25H15a.75.75 0 0 0 0-1.5h-2.25V9Z" clipRule="evenodd" />
+                        </svg>
+                    );
+                } else {
+                    // Generic link icon
+                    return (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={`${iconClasses} text-gray-500`}>
+                            <path d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.111 2.121-2.121a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+                        </svg>
+                    );
+                }
+            };
+
+
+            return (
+                <div>
+                    <button
+                        onClick={handleBackToCourses}
+                        className="mb-6 py-2 px-4 bg-gray-200 text-gray-700 rounded-md shadow hover:bg-gray-300 transition duration-150 ease-in-out"
+                    >
+                        &larr; Back to All Courses
+                    </button>
+                    <h2 className="text-3xl font-bold text-gray-800 mb-8">{selectedCourseName} Management</h2>
+
+                    {/* Section for Adding New Lectures (Individual) for this course */}
+                    <div className="mb-10 p-6 border border-gray-200 rounded-md bg-gray-50">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Add New Lecture to {selectedCourseName}</h3>
+                        <form className="space-y-4">
+                            <div>
+                                <label htmlFor="lectureTitle" className="block text-sm font-medium text-gray-700 mb-1">Lecture Title</label>
+                                <input
+                                    type="text"
+                                    id="lectureTitle"
+                                    name="lectureTitle"
+                                    placeholder="e.g., Depreciation Methods"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={newLectureTitle}
+                                    onChange={(e) => setNewLectureTitle(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="lectureDriveUrl" className="block text-sm font-medium text-gray-700 mb-1">Google Drive/YouTube URL (Preview Link)</label>
+                                <input
+                                    type="url"
+                                    id="lectureDriveUrl"
+                                    name="lectureDriveUrl"
+                                    placeholder="https://drive.google.com/file/d/FILE_ID/preview or https://www.youtube.com/embed/VIDEO_ID"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={newLectureDriveUrl}
+                                    onChange={(e) => setNewLectureDriveUrl(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="lectureChapter" className="block text-sm font-medium text-gray-700 mb-1">Chapter</label>
+                                <input
+                                    type="text"
+                                    id="lectureChapter"
+                                    name="lectureChapter"
+                                    placeholder="e.g., Chapter 1: Introduction"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={newLectureChapter}
+                                    onChange={(e) => setNewLectureChapter(e.target.value)}
+                                    required
+                                />
+                            </div>
+
+                            {isScheduling && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label htmlFor="scheduledDate" className="block text-sm font-medium text-gray-700 mb-1">Schedule Date</label>
+                                        <input
+                                            type="date"
+                                            id="scheduledDate"
+                                            name="scheduledDate"
+                                            className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                            value={scheduledDate}
+                                            onChange={(e) => setScheduledDate(e.target.value)}
+                                            required={isScheduling}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="scheduledTime" className="block text-sm font-medium text-gray-700 mb-1">Schedule Time</label>
+                                        <input
+                                            type="time"
+                                            id="scheduledTime"
+                                            name="scheduledTime"
+                                            className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                            value={scheduledTime}
+                                            onChange={(e) => setScheduledTime(e.target.value)}
+                                            required={isScheduling}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex flex-col sm:flex-row gap-4 mt-6">
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        setIsScheduling(false);
+                                        handleAddLectureForCourse(e, 'uploadNow');
+                                    }}
+                                    className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out"
+                                >
+                                    Upload Now (Visible)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsScheduling(true)}
+                                    className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150 ease-in-out"
+                                >
+                                    Schedule
+                                </button>
+                                {isScheduling && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleAddLectureForCourse(e, 'schedule')}
+                                        className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out"
+                                >
+                                        Add Scheduled Lecture (Visible)
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={handleSaveAsDraft}
+                                    className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-500 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition duration-150 ease-in-out"
+                                >
+                                    Save as Draft
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    {/* Section for Bulk Uploading Lectures for this course */}
+                    <div className="mb-10 p-6 border border-gray-200 rounded-md bg-gray-50">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Bulk Upload Lectures to {selectedCourseName} (Hidden by Default)</h3>
+                        <p className="text-sm text-gray-600 mb-2">Enter one lecture per line in the format: `Title,URL,Chapter Name`</p>
+                        <textarea
+                            className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md h-32"
+                            placeholder="Example:&#10;Intro to Accounting,https://drive.google.com/file/d/abc/preview,Chapter 1&#10;Balance Sheets,https://www.youtube.com/embed/xyz,Chapter 2"
+                            value={bulkLectureInput}
+                            onChange={(e) => setBulkLectureInput(e.target.value)}
+                        ></textarea>
+                        <button
+                            type="button"
+                            onClick={handleBulkUploadForCourse}
+                            className="mt-4 w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150 ease-in-out"
+                        >
+                            Upload Lectures (Hidden)
+                        </button>
+                    </div>
+
+                    {/* Section for Adding Students to this Course */}
+                    <div className="mb-10 p-6 border border-gray-200 rounded-md bg-gray-50">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Add Students to {selectedCourseName}</h3>
+                        <div className="flex items-end gap-4">
+                            <div className="flex-1">
+                                <label htmlFor="selectStudentForCourse" className="block text-sm font-medium text-gray-700 mb-1">Select Student</label>
+                                <select
+                                    id="selectStudentForCourse"
+                                    className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm rounded-md"
+                                    value={selectedStudentForCourse}
+                                    onChange={(e) => setSelectedStudentForCourse(e.target.value)}
+                                >
+                                    <option value="">-- Select a Student --</option>
+                                    {Object.keys(registeredStudents).map(regNum => (
+                                        <option key={regNum} value={regNum}>{registeredStudents[regNum].fullName} ({regNum})</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleAddStudentToCourse}
+                                className="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out"
+                            >
+                                Add Student
+                            </button>
+                        </div>
+                    </div>
+
+
+                    {/* Lectures for this Course - Grouped by Chapter */}
+                    <div className="mt-8 p-6 border border-gray-200 rounded-md bg-gray-50">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Lectures in {selectedCourseName}:</h3>
+                        {Object.keys(lecturesInThisCourse).length > 0 ? (
+                            Object.keys(lecturesInThisCourse).sort().map(chapterName => {
+                                if (chapterName !== 'Uncategorized') {
+                                    return (
+                                        <div key={chapterName} className="mb-4 bg-white rounded-lg shadow-sm border border-gray-100">
+                                            <button
+                                                className="w-full text-left p-4 flex justify-between items-center text-lg font-semibold text-gray-800 focus:outline-none"
+                                                onClick={() => toggleChapter(chapterName)}
+                                            >
+                                                {chapterName}
+                                                <svg
+                                                    className={`w-5 h-5 transition-transform duration-200 ${expandedChapters[chapterName] ? 'rotate-90' : ''}`}
+                                                    fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
+                                                >
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                            </button>
+                                            {expandedChapters[chapterName] && (
+                                                <ul className="divide-y divide-gray-200 px-4 pb-4">
+                                                    {lecturesInThisCourse[chapterName].map(lecture => (
+                                                        <li key={lecture.id} className="py-3 flex justify-between items-center">
+                                                            <div>
+                                                                <p className="font-medium text-gray-700">{lecture.title}</p>
+                                                                {lecture.publishDate && lecture.publishTime && (
+                                                                    <p className="text-gray-500 text-xs">Scheduled: {lecture.publishDate} at {lecture.publishTime}</p>
+                                                                )}
+                                                                {/* Only display the icon, with a tooltip */}
+                                                                <a href={lecture.driveUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1" title="View Lecture">
+                                                                    {getLinkIcon(lecture.driveUrl)}
+                                                                </a>
+                                                            </div>
+                                                            <div className="flex items-center">
+                                                                <span className="text-sm text-gray-600 mr-2">Visible:</span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={lecture.isVisible}
+                                                                    onChange={() => toggleLectureVisibility(lecture.id)}
+                                                                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                                                                />
+                                                            </div>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
+                                    );
+                                } else if (lecturesInThisCourse[chapterName].length > 0) {
+                                    return (
+                                        <div key="no-chapter" className="mb-4 bg-white rounded-lg shadow-sm border border-gray-100">
+                                            <button
+                                                className="w-full text-left p-4 flex justify-between items-center text-lg font-semibold text-gray-800 focus:outline-none"
+                                                onClick={() => toggleChapter('Uncategorized')} // Toggle the 'Uncategorized' chapter
+                                            >
+                                                Lectures Without Chapter
+                                                <svg
+                                                    className={`w-5 h-5 transition-transform duration-200 ${expandedChapters['Uncategorized'] ? 'rotate-90' : ''}`}
+                                                    fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
+                                                >
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                            </button>
+                                            {expandedChapters['Uncategorized'] && (
+                                                <ul className="divide-y divide-gray-200 px-4 pb-4">
+                                                    {lecturesInThisCourse['Uncategorized'].map(lecture => (
+                                                        <li key={lecture.id} className="py-3 flex justify-between items-center">
+                                                            <div>
+                                                                <p className="font-medium text-gray-700">{lecture.title}</p>
+                                                                {lecture.publishDate && lecture.publishTime && (
+                                                                    <p className="text-gray-500 text-xs">Scheduled: {lecture.publishDate} at {lecture.publishTime}</p>
+                                                                )}
+                                                                {/* Only display the icon, with a tooltip */}
+                                                                <a href={lecture.driveUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1" title="View Lecture">
+                                                                    {getLinkIcon(lecture.driveUrl)}
+                                                                </a>
+                                                            </div>
+                                                            <div className="flex items-center">
+                                                                <span className="text-sm text-gray-600 mr-2">Visible:</span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={lecture.isVisible}
+                                                                    onChange={() => toggleLectureVisibility(lecture.id)}
+                                                                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                                                                />
+                                                            </div>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })
+                        ) : (
+                            <p className="text-gray-500">No lectures added to this course yet.</p>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+
+        // Lecture Management Section Component (Google Classroom Style)
+        const LectureManagementSection = ({
+            groupedLectures, allCourses, addLecture, toggleLectureVisibility, setMessage, setMessageType,
+            registeredStudents, updateStudentCourses, publishAllInvisibleLectures, copyCourse, deleteCourse
+        }) => {
+            const [selectedCourseName, setSelectedCourseName] = useState(null);
+            const [openMenuId, setOpenMenuId] = useState(null); // State to track which course card's menu is open
+            const menuRef = useRef(null); // Ref for click-outside detection
+
+            // States for lecture forms (lifted to this component to be passed to CourseDetailManagement)
+            const [newLectureTitle, setNewLectureTitle] = useState('');
+            const [newLectureDriveUrl, setNewLectureDriveUrl] = useState('');
+            const [newLectureChapter, setNewLectureChapter] = useState('');
+            const [isScheduling, setIsScheduling] = useState(false);
+            const [scheduledDate, setScheduledDate] = useState('');
+            const [scheduledTime, setScheduledTime] = useState('');
+            const [bulkLectureInput, setBulkLectureInput] = useState('');
+
+            // State for confirmation modal (local to this component for delete course)
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [modalContent, setModalContent] = useState({ title: '', message: '', onConfirm: () => {} });
+
+
+            // Effect to handle clicks outside the dropdown menu
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (menuRef.current && !menuRef.current.contains(event.target)) {
+                        setOpenMenuId(null); // Close the menu if click is outside
+                    }
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => {
+                    document.removeEventListener('mousedown', handleClickOutside);
+                };
+            }, [menuRef]);
+
+            const handleToggleMenu = (courseName, event) => {
+                event.stopPropagation(); // Prevent card click from triggering
+                setOpenMenuId(openMenuId === courseName ? null : courseName);
+            };
+
+            const handleCopyCourseAction = (courseName) => {
+                const result = copyCourse(courseName);
+                if (result.success) {
+                    setMessage(result.message);
+                    setMessageType('success');
+                } else {
+                    setMessage(result.message);
+                    setMessageType('error');
+                }
+                setOpenMenuId(null); // Close menu after action
+            };
+
+            const handleDeleteCourseConfirmation = (courseName) => {
+                setModalContent({
+                    title: 'Confirm Course Deletion',
+                    message: `Are you sure you want to delete the course "${courseName}" and all its lectures? This action cannot be undone.`,
+                    onConfirm: () => {
+                        const result = deleteCourse(courseName);
+                        if (result.success) {
+                            setMessage(result.message);
+                            setMessageType('success');
+                        } else {
+                            setMessage(result.message);
+                            setMessageType('error');
+                        }
+                        setIsModalOpen(false); // Close modal
+                        setOpenMenuId(null); // Close menu
+                    }
+                });
+                setIsModalOpen(true); // Open modal
+            };
+
+
+            const handleBackToCourses = () => {
+                setSelectedCourseName(null);
+                // Clear form states when going back to course list
+                setNewLectureTitle('');
+                setNewLectureDriveUrl('');
+                setNewLectureChapter('');
+                setIsScheduling(false);
+                setScheduledDate('');
+                setScheduledTime('');
+                setBulkLectureInput('');
+            };
+
+            const handlePublishAllInvisible = () => {
+                const result = publishAllInvisibleLectures();
+                if (result.success) {
+                    setMessage(`Successfully published ${result.count} invisible lectures.`);
+                    setMessageType('success');
+                } else {
+                    setMessage('Failed to publish invisible lectures.');
+                    setMessageType('error');
+                }
+            };
+
+
+            return (
+                <div>
+                    {!selectedCourseName ? (
+                        <>
+                            <h2 className="text-3xl font-bold text-gray-800 mb-8">Lecture Management - All Courses</h2>
+
+                            <button
+                                onClick={handlePublishAllInvisible}
+                                className="mb-6 py-2 px-4 bg-green-600 text-white rounded-md shadow hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out"
+                            >
+                                Publish All Drafts/Hidden Lectures Now
+                            </button>
+
+                            {allCourses.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 p-2"> {/* Adjusted gap and padding */}
+                                    {allCourses.map(courseName => {
+                                        // Calculate chapter count, excluding 'Uncategorized' if other chapters exist
+                                        const chaptersInCourse = groupedLectures[courseName] || {};
+                                        const explicitChapterCount = Object.keys(chaptersInCourse).filter(c => c !== 'Uncategorized').length;
+                                        const hasUncategorizedLectures = chaptersInCourse['Uncategorized'] && chaptersInCourse['Uncategorized'].length > 0;
+
+                                        let displayChapterCount = '';
+                                        if (explicitChapterCount > 0) {
+                                            displayChapterCount = `${explicitChapterCount} Chapters`;
+                                        } else if (hasUncategorizedLectures) {
+                                            displayChapterCount = `${chaptersInCourse['Uncategorized'].length} Uncategorized Lectures`;
+                                        } else {
+                                            displayChapterCount = 'No Chapters';
+                                        }
+
+                                        return (
+                                            <div
+                                                key={courseName}
+                                                className="bg-indigo-50 py-6 px-4 rounded-lg shadow-md cursor-pointer hover:bg-indigo-100 transition duration-150 ease-in-out flex flex-col items-center justify-center text-center relative" /* Added relative for absolute positioning */
+                                                onClick={() => setSelectedCourseName(courseName)}
+                                            >
+                                                {/* Three-dot menu button */}
+                                                <div className="absolute top-2 right-2" ref={openMenuId === courseName ? menuRef : null}>
+                                                    <button
+                                                        onClick={(e) => handleToggleMenu(courseName, e)}
+                                                        className="p-1 rounded-full hover:bg-gray-200 focus:outline-none"
+                                                        aria-label="Course options"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-gray-500 hover:text-gray-700">
+                                                            <path fillRule="evenodd" d="M10.5 6a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM12 12a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm0 6a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" clipRule="evenodd" />
+                                                        </svg>
+                                                    </button>
+                                                    {openMenuId === courseName && (
+                                                        <div className="absolute right-0 mt-2 w-32 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleCopyCourseAction(courseName); }}
+                                                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                                            >
+                                                                Copy
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleDeleteCourseConfirmation(courseName); }}
+                                                                className="block w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-red-50"
+                                                            >
+                                                                Delete
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <h3 className="text-2xl font-bold text-indigo-700 mb-4 leading-normal break-words">
+                                                    {courseName}
+                                                </h3>
+                                                <p className="text-gray-600 text-lg leading-normal break-words">
+                                                    {displayChapterCount}
+                                                </p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p className="text-center text-gray-500">No courses available. Add lectures to create courses.</p>
+                            )}
+                        </>
+                    ) : (
+                        <CourseDetailManagement
+                            selectedCourseName={selectedCourseName}
+                            groupedLectures={groupedLectures}
+                            allCourses={allCourses}
+                            addLecture={addLecture}
+                            toggleLectureVisibility={toggleLectureVisibility}
+                            setMessage={setMessage}
+                            setMessageType={setMessageType}
+                            handleBackToCourses={handleBackToCourses}
+                            registeredStudents={registeredStudents}
+                            updateStudentCourses={updateStudentCourses}
+                            // Pass down lecture form states and handlers
+                            newLectureTitle={newLectureTitle}
+                            setNewLectureTitle={setNewLectureTitle}
+                            newLectureDriveUrl={newLectureDriveUrl}
+                            setNewLectureDriveUrl={setNewLectureDriveUrl}
+                            newLectureChapter={newLectureChapter}
+                            setNewLectureChapter={setNewLectureChapter}
+                            isScheduling={isScheduling}
+                            setIsScheduling={setIsScheduling}
+                            scheduledDate={scheduledDate}
+                            setScheduledDate={setScheduledDate}
+                            scheduledTime={scheduledTime}
+                            setScheduledTime={setScheduledTime}
+                            bulkLectureInput={bulkLectureInput}
+                            setBulkLectureInput={setBulkLectureInput}
+                        />
+                    )}
+                    {/* Confirmation Modal for Course Deletion */}
+                    <ConfirmationModal
+                        isOpen={isModalOpen}
+                        title={modalContent.title}
+                        message={modalContent.message}
+                        onConfirm={modalContent.onConfirm}
+                        onCancel={() => setIsModalOpen(false)}
+                    />
+                </div>
+            );
+        };
+
+
+        // Admin Page Component (main container for admin functionalities)
+        const AdminPage = () => {
+            const { user, logout, registeredStudents, updateStudentCourses, allCourses, allLectures, addLecture, toggleLectureVisibility, deleteStudent, publishAllInvisibleLectures, copyCourse, deleteCourse,
+                studentRecords, addStudentRecord, updateStudentRecord, deleteStudentRecord, copyStudentRecord, registerStudent
+            } = useAuth();
+            const [message, setMessage] = useState('');
+            const [messageType, setMessageType] = useState('info');
+            const [activeSection, setActiveSection] = useState('lectureManagement'); // Default to lecture management
+
+            // State for confirmation modal (lifted to AdminPage)
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [modalContent, setModalContent] = useState({ title: '', message: '', onConfirm: () => {} });
+
+
+            // Student Management States (used directly in StudentManagementSection)
+            const [newRegNumber, setNewRegNumber] = useState('');
+            const [newStudentFullName, setNewStudentFullName] = useState('');
+            const [newPassword, setNewPassword] = useState('');
+            const [selectedStudentRegNum, setSelectedStudentRegNum] = useState('');
+            const [assignedCourseNames, setAssignedCourseNames] = useState([]);
+
+
+            // Effect to update assignedCourseNames when selected student changes
+            useEffect(() => {
+                if (selectedStudentRegNum && registeredStudents[selectedStudentRegNum]) {
+                    setAssignedCourseNames(registeredStudents[selectedStudentRegNum].assignedCourses || []);
+                } else {
+                    setAssignedCourseNames([]);
+                }
+            }, [selectedStudentRegNum, registeredStudents]);
+
+            const handleRegister = (e) => {
+                e.preventDefault();
+                setMessage('');
+
+                if (!newRegNumber || !newStudentFullName || !newPassword) {
+                    setMessage('Please enter registration number, full name, and password.');
+                    setMessageType('error');
+                    return;
+                }
+
+                const result = registerStudent(newRegNumber, newStudentFullName, newPassword);
+                if (result.success) {
+                    setMessage(result.message);
+                    setMessageType('success');
+                    setNewRegNumber('');
+                    setNewStudentFullName('');
+                    setNewPassword('');
+                } else {
+                    setMessage(result.message);
+                    setMessageType('error');
+                }
+            };
+
+            // This function is now only used for the checkboxes in StudentManagementSection
+            const handleCourseCheckboxChange = (courseName, isChecked) => {
+                setAssignedCourseNames(prevNames =>
+                    isChecked ? [...prevNames, courseName] : prevNames.filter(name => name !== courseName)
+                );
+            };
+
+            const handleSaveAssignedCourses = () => {
+                if (selectedStudentRegNum) {
+                    // This now replaces all assigned courses for the selected student
+                    // If you want to add/remove individually, use updateStudentCourses
+                    const studentData = registeredStudents[selectedStudentRegNum];
+                    if (studentData) {
+                        // This logic is slightly different from updateStudentCourses
+                        // This sets the *entire* list of assigned courses from the checkboxes
+                        // The updateStudentCourses is for adding/removing one by one.
+                        // For this section, we'll keep it as setting the full list.
+                        updateStudentCourses(selectedStudentRegNum, assignedCourseNames, 'set_all'); // New action type
+                        setMessage(`Courses updated for ${selectedStudentRegNum}!`);
+                        setMessageType('success');
+                    }
+                } else {
+                    setMessage('Please select a student to assign courses.');
+                    setMessageType('error');
+                }
+            };
+
+            // Group lectures by course and then by chapter for display in LectureManagementSection
+            const groupedLectures = useMemo(() => {
+                const groups = {};
+                allLectures.forEach(lecture => {
+                    // Use a default chapter name if it's empty, for grouping purposes, e.g., 'Uncategorized'
+                    const chapterKey = lecture.chapter && lecture.chapter.trim() !== '' ? lecture.chapter : 'Uncategorized';
+
+                    if (!groups[lecture.course]) {
+                        groups[lecture.course] = {};
+                    }
+                    if (!groups[lecture.course][chapterKey]) {
+                        groups[lecture.course][chapterKey] = [];
+                    }
+                    groups[lecture.course][chapterKey].push(lecture);
+                });
+                // Sort chapters within each course and lectures within chapters
+                for (const course in groups) {
+                    for (const chapter in groups[course]) {
+                        groups[course][chapter].sort((a, b) => a.title.localeCompare(b.title));
+                    }
+                    groups[course] = Object.fromEntries(
+                        Object.entries(groups[course]).sort(([chapA], [chapB]) => {
+                            // Ensure 'Uncategorized' comes first if it exists
+                            if (chapA === 'Uncategorized') return -1;
+                            if (chapB === 'Uncategorized') return 1;
+                            return chapA.localeCompare(chapB);
+                        })
+                    );
+                }
+                return groups;
+            }, [allLectures]);
+
+
+            return (
+                <div className="flex flex-grow w-full max-w-full bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200">
+                    {/* Left Sidebar */}
+                    <AdminSidebar activeSection={activeSection} setActiveSection={setActiveSection} logout={logout} user={user} />
+
+                    {/* Main Content Area */}
+                    <div className="flex-1 p-8 overflow-y-auto">
+                        <MessageBox message={message} type={messageType} onClose={() => setMessage('')} />
+
+                        {activeSection === 'studentManagement' && (
+                            <StudentManagementSection
+                                registeredStudents={registeredStudents}
+                                allCourses={allCourses}
+                                selectedStudentRegNum={selectedStudentRegNum}
+                                setSelectedStudentRegNum={setSelectedStudentRegNum}
+                                assignedCourseNames={assignedCourseNames}
+                                setAssignedCourseNames={setAssignedCourseNames}
+                                handleRegister={handleRegister}
+                                handleCourseCheckboxChange={handleCourseCheckboxChange}
+                                handleSaveAssignedCourses={handleSaveAssignedCourses}
+                                newRegNumber={newRegNumber}
+                                setNewRegNumber={setNewRegNumber}
+                                newStudentFullName={newStudentFullName}
+                                setNewStudentFullName={setNewStudentFullName}
+                                newPassword={newPassword}
+                                setNewPassword={setNewPassword}
+                                deleteStudent={deleteStudent}
+                                setMessage={setMessage}
+                                setMessageType={setMessageType}
+                                registerStudent={registerStudent}
+                                setIsModalOpen={setIsModalOpen} // Pass down modal state setters
+                                setModalContent={setModalContent} // Pass down modal content setter
+                            />
+                        )}
+
+                        {activeSection === 'studentRecordsManagement' && (
+                            <StudentRecordsManagementSection
+                                studentRecords={studentRecords}
+                                allCourses={allCourses}
+                                addStudentRecord={addStudentRecord}
+                                updateStudentRecord={updateStudentRecord}
+                                deleteStudentRecord={deleteStudentRecord}
+                                copyStudentRecord={copyStudentRecord}
+                                setMessage={setMessage}
+                                setMessageType={setMessageType}
+                                setIsModalOpen={setIsModalOpen} // Pass down modal state setters
+                                setModalContent={setModalContent} // Pass down modal content setter
+                            />
+                        )}
+
+                        {activeSection === 'lectureManagement' && (
+                            <LectureManagementSection
+                                groupedLectures={groupedLectures}
+                                allCourses={allCourses}
+                                addLecture={addLecture}
+                                toggleLectureVisibility={toggleLectureVisibility}
+                                setMessage={setMessage}
+                                setMessageType={setMessageType}
+                                registeredStudents={registeredStudents}
+                                updateStudentCourses={updateStudentCourses}
+                                publishAllInvisibleLectures={publishAllInvisibleLectures}
+                                copyCourse={copyCourse}
+                                deleteCourse={deleteCourse} // Pass deleteCourse
+                            />
+                        )}
+                    </div>
+                    {/* Render the ConfirmationModal at the AdminPage level */}
+                    <ConfirmationModal
+                        isOpen={isModalOpen}
+                        title={modalContent.title}
+                        message={modalContent.message}
+                        onConfirm={modalContent.onConfirm}
+                        onCancel={() => setIsModalOpen(false)}
+                    />
+                </div>
+            );
+        };
+
+        // Main App Component for Admin Panel
+        const App = () => {
+            const { user } = useAuth();
+            const [isLoggedIn, setIsLoggedIn] = useState(false); // Track admin login state
+
+            useEffect(() => {
+                if (user && user.username === 'admin') { // Check if the logged-in user is the admin
+                    setIsLoggedIn(true);
+                } else {
+                    setIsLoggedIn(false);
+                }
+            }, [user]);
+
+            return (
+                <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 w-full">
+                    <header className="w-full max-w-full bg-white p-4 rounded-lg shadow-md mb-8 flex justify-between items-center border border-gray-200">
+                        <h1 className="text-2xl font-bold text-indigo-700">Admin Panel</h1>
+                        {isLoggedIn && (
+                            <span className="text-gray-600">Logged in as: {user.fullName}</span>
+                        )}
+                    </header>
+                    <main className="flex-grow flex items-center justify-center w-full">
+                        {isLoggedIn ? <AdminPage /> : <AdminLoginPage onLoginSuccess={() => setIsLoggedIn(true)} />}
+                    </main>
+                </div>
+            );
+        };
+
+        // Wrap the App with AuthProvider for context
+        const WrappedApp = () => (
+            <AuthProvider>
+                <App />
+            </AuthProvider>
+        );
+
+        // Render the React app into the 'root' div
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<WrappedApp />);
+    </script>
+</body>
+</html>
